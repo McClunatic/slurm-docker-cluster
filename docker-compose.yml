@@ -34,6 +34,7 @@ services:
     container_name: slurmdbd
     hostname: slurmdbd
     environment:
+      USERS: ${USERS:-}
       MYSQL_USER: ${MYSQL_USER:-slurm}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-password}
     volumes:
@@ -62,6 +63,7 @@ services:
     privileged: true
     working_dir: /data
     environment:
+      USERS: ${USERS:-}
       ELASTICSEARCH_HOST: ${ELASTICSEARCH_HOST:-}
       SSH_ENABLE: ${SSH_ENABLE:-false}
     volumes:
@@ -92,6 +94,8 @@ services:
     container_name: slurmrestd
     hostname: slurmrestd
     privileged: true
+    environment:
+      USERS: ${USERS:-}
     volumes:
       - etc_munge:/etc/munge
       - etc_slurm:/etc/slurm
@@ -118,6 +122,7 @@ services:
     working_dir: /data
     privileged: true
     environment:
+      USERS: ${USERS:-}
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-slurm}
     volumes:
       - etc_munge:/etc/munge
@@ -150,6 +155,7 @@ services:
     privileged: true
     profiles: ["gpu"]
     environment:
+      USERS: ${USERS:-}
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-slurm}
     volumes:
       - etc_munge:/etc/munge

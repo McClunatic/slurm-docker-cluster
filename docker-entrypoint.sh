@@ -28,8 +28,54 @@ detect_replica_number() {
     return 1
 }
 
+# Create users from USERS environment variable
+# Users are created with deterministic UIDs for consistency across containers
+create_users() {
+    if [ -z "$USERS" ]; then
+        return 0
+    fi
+
+    echo "---> Creating users from USERS environment variable..."
+
+    # Parse and normalize: convert commas to spaces, remove duplicates, sort alphabetically
+    SORTED_USERS=$(echo "$USERS" | tr ',' ' ' | tr -s ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' ')
+
+    if [ -z "$SORTED_USERS" ]; then
+        echo "---> No valid users found in USERS variable"
+        return 0
+    fi
+
+    # Start UID assignment from 1000 (standard Linux non-system user range)
+    CURRENT_UID=1000
+
+    for username in $SORTED_USERS; do
+        # Check if user already exists
+        if id "$username" >/dev/null 2>&1; then
+            echo "---> User '$username' already exists, skipping"
+        else
+            # Create user with explicit UID, home directory, bash shell
+            # -u: explicit UID for consistency across containers
+            # -N: no user private group
+            # -m: create home directory with skeleton files (.bashrc, etc.)
+            # -s: shell
+            useradd -u "$CURRENT_UID" -N -m -s /bin/bash "$username"
+            echo "---> Created user '$username' with UID $CURRENT_UID"
+        fi
+        CURRENT_UID=$((CURRENT_UID + 1))
+    done
+
+    # Ensure /data directory exists and is accessible to all users
+    if [ -d /data ]; then
+        chmod 1777 /data
+        echo "---> Set /data permissions for user access"
+    fi
+}
+
 echo "---> Starting the MUNGE Authentication service (munged) ..."
 gosu munge /usr/sbin/munged
+
+# Create users if USERS environment variable is set
+create_users
 
 if [ "$1" = "slurmdbd" ]
 then

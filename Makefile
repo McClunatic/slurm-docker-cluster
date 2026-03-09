@@ -58,6 +58,7 @@ help:  ## Show this help message
 	@echo "Development & Testing:"
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "shell" "Open shell in slurmctld"
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "test" "Run test suite"
+	@printf "  ${CYAN}%-15s${RESET} %s\n" "test-users" "Run multi-user tests"
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "test-monitoring" "Run monitoring profile tests"
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "test-gpu" "Run GPU profile tests"
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "test-ondemand" "Run Open OnDemand profile tests"
@@ -111,6 +112,9 @@ logs:  ## Show container logs
 
 test:  ## Run test suite
 	./test_cluster.sh
+
+test-users:  ## Run multi-user test suite
+	./test_users.sh
 
 test-monitoring:  ## Run monitoring profile test suite
 	./test_monitoring.sh
