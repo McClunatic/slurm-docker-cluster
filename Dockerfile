@@ -5,6 +5,7 @@
 
 ARG SLURM_VERSION
 ARG GOSU_VERSION=1.19
+ARG SPACK_TAG=v1.1.1
 # BUILDER_BASE and RUNTIME_BASE overridden when GPU_ENABLE=true is set in .env
 ARG BUILDER_BASE=rockylinux/rockylinux:9
 ARG RUNTIME_BASE=rockylinux/rockylinux:9
@@ -35,174 +36,148 @@ RUN set -ex \
 # ============================================================================
 FROM ${BUILDER_BASE} AS builder
 
+ARG SPACK_TAG
 ARG SLURM_VERSION
-ARG TARGETARCH
-ARG GPU_ENABLE
 
-# Enable CRB and EPEL repositories for development packages
-# Install RPM build tools and dependencies
-RUN set -ex \
-    && dnf makecache \
-    && dnf -y install dnf-plugins-core epel-release \
-    && dnf config-manager --set-enabled crb \
-    && dnf makecache \
-    && dnf -y install --nobest --exclude='*.i686' \
-       autoconf \
-       automake \
-       bzip2 \
-       freeipmi-devel \
-       dbus-devel \
-       gcc \
-       gcc-c++ \
-       git \
-       gtk2-devel \
-       hdf5-devel \
-       http-parser-devel \
-       hwloc-devel \
-       json-c-devel \
-       libcurl-devel \
-       libyaml-devel \
-       lua-devel \
-       lz4-devel \
-       make \
-       man2html \
-       mariadb-devel \
-       munge \
-       munge-devel \
-       ncurses-devel \
-       numactl-devel \
-       openssl-devel \
-       pam-devel \
-       perl \
-       python3.12 \
-       python3.12-devel \
-       readline-devel \
-       rpm-build \
-       rpmdevtools \
-       rrdtool-devel \
-       wget \
-       libjwt \
-       libjwt-devel \
-    && dnf clean all \
-    && rm -rf /var/cache/dnf
+# Install RPM build tools and dependencies for Spack
+RUN set -ex && \
+    dnf -y install \
+    file \
+    bzip2 \
+    ca-certificates \
+    git \
+    gzip \
+    patch \
+    python3 \
+    tar \
+    unzip \
+    xz \
+    zstd \
+    gcc-toolset-15-gcc \
+    gcc-toolset-15-gcc-c++ \
+    gcc-toolset-15-gcc-gfortran
 
-# Setup RPM build environment
-RUN rpmdev-setuptree
+# Prepend the gcc-toolset-15 bin directory so Spack and all build processes
+# pick up the toolset compilers (gcc, g++, gfortran) before any system GCC.
+ENV PATH=/opt/rh/gcc-toolset-15/root/usr/bin:${PATH}
 
-# Copy RPM macros
-COPY rpmbuild/slurm.rpmmacros /root/.rpmmacros
+RUN git clone --depth=2 --branch "${SPACK_TAG}" \
+    https://github.com/spack/spack.git /opt/spack.git
 
-# When GPU_ENABLE=true, the builder base image (nvidia/cuda:*-devel-*) provides
-# NVML headers. Symlink them to standard paths and enable --with-nvml for rpmbuild.
-RUN if [ "${GPU_ENABLE}" = "true" ]; then \
-        set -ex && \
-        CUDA_TARGET=$(case "${TARGETARCH}" in amd64) echo "x86_64-linux" ;; arm64) echo "sbsa-linux" ;; esac) && \
-        ln -sf /usr/local/cuda/include/nvml.h /usr/include/nvml.h && \
-        ln -sf /usr/local/cuda/targets/${CUDA_TARGET}/lib/stubs/libnvidia-ml.so /usr/lib64/libnvidia-ml.so && \
-        echo "%_with_nvml --with-nvml=/usr" >> /root/.rpmmacros; \
-    fi
+RUN . /opt/spack.git/share/spack/setup-env.sh && \
+    spack env create slurm && \
+    spack env activate slurm && \
+    spack add flux-sched && \
+    spack add munge localstatedir=/var && \
+    spack add python && \
+    spack add py-pip && \
+    spack add slurm@$(echo ${SLURM_VERSION} | tr . -) +cgroup +mariadb +pmix +restd sysconfdir=/etc/slurm && \
+    sed -i /view/d /opt/spack.git/var/spack/environments/slurm/spack.yaml && \
+    spack config add "view:default:root:/opt/spack" && \
+    spack config add "view:default:link_type:hardlink" && \
+    spack config add "mirrors:mirror:url:/mirror" && \
+    spack config add "mirrors:mirror:signed:false"
 
-# Download official Slurm release tarball and build RPMs with slurmrestd enabled
-# Architecture mapping: Docker TARGETARCH (amd64, arm64) -> RPM arch (x86_64, aarch64)
-RUN set -ex \
-    && RPM_ARCH=$(case "${TARGETARCH}" in \
-         amd64) echo "x86_64" ;; \
-         arm64) echo "aarch64" ;; \
-         *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
-       esac) \
-    && echo "Building Slurm RPMs for architecture: ${RPM_ARCH}" \
-    && wget -O /root/rpmbuild/SOURCES/slurm-${SLURM_VERSION}.tar.bz2 \
-       https://download.schedmd.com/slurm/slurm-${SLURM_VERSION}.tar.bz2 \
-    && cd /root/rpmbuild/SOURCES \
-    && rpmbuild -ta slurm-${SLURM_VERSION}.tar.bz2 \
-    && ls -lh /root/rpmbuild/RPMS/${RPM_ARCH}/
+# This layer takes a long time. It is placed after the cheap layers so that
+# changes to entrypoints, config files, or the runtime stage do not
+# invalidate this cache.
+RUN --mount=type=cache,target=/mirror \
+    . /opt/spack.git/share/spack/setup-env.sh && \
+    spack env activate slurm && \
+    spack concretize && \
+    spack install --fail-fast && \
+    spack buildcache push mirror && \
+    spack gc -y
+
+# Install Python packages into the Spack-managed Python inside the view
+RUN . /opt/spack.git/share/spack/setup-env.sh && \
+    spack env activate slurm && \
+    pip install \
+    flux-python==$(spack find --format "{version}" flux-core) \
+    'parsl[visualization,monitoring,flux]'
 
 # ============================================================================
 # Stage 3: Runtime image
 # ============================================================================
 FROM ${RUNTIME_BASE}
 
-LABEL org.opencontainers.image.source="https://github.com/giovtorres/slurm-docker-cluster" \
+LABEL org.opencontainers.image.source="https://github.com/McClunatic/slurm-docker-cluster" \
       org.opencontainers.image.title="slurm-docker-cluster" \
-      org.opencontainers.image.description="Slurm Docker cluster on Rocky Linux 9" \
-      maintainer="Giovanni Torres"
+      org.opencontainers.image.description="Slurm Docker cluster on UBI 8" \
+      maintainer="Brian McClune"
 
 ARG SLURM_VERSION
 ARG TARGETARCH
 ARG GPU_ENABLE
 
-# Enable CRB and EPEL repositories, then install runtime dependencies
-RUN set -ex \
-    && dnf -y update \
-    && dnf -y install dnf-plugins-core epel-release \
-    && dnf config-manager --set-enabled crb \
-    && dnf makecache \
-    && dnf -y install \
-       apptainer \
-       bash-completion \
-       bzip2 \
-       gettext \
-       hdf5 \
-       http-parser \
-       hwloc \
-       json-c \
-       jq \
-       libaec \
-       libyaml \
-       lua \
-       lz4 \
-       mariadb \
-       munge \
-       numactl \
-       openssh-server \
-       perl \
-       procps-ng \
-       psmisc \
-       python3.12 \
-       readline \
-       vim-enhanced \
-       wget \
-       libjwt \
-    && dnf clean all \
-    && rm -rf /var/cache/dnf \
-    && alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 \
-    && alternatives --set python3 /usr/bin/python3.12 \
-    && ssh-keygen -A \
-    && sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config \
-    && sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+# Install minimal OS runtime packages not provided by the Spack view:
+#
+#   ca-certificates  — TLS root certs for outbound HTTPS from jobs
+#   sudo             — interactive users need sudo for dev convenience
+#   hostname         — provides `hostname` for worker nodes
+#   procps-ng        — provides `pidof` for health checks
+#   openssh-server   — allows `ssh` into containers for interactive testing
+#   openssh-clients  — allows `ssh` out of containers (e.g. file staging tests)
+#
+# Intentionally NOT installed here:
+#   munge, mariadb, slurm — all provided by /opt/spack copied below
+RUN dnf install -y \
+        ca-certificates \
+        sudo \
+        hostname \
+        procps-ng \
+        openssh-server \
+        openssh-clients && \
+    ssh-keygen -A && \
+    sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config  && \
+    sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config && \
+    dnf clean all
 
 # Install gosu (built from source in stage 1)
 COPY --from=gosu-builder /go/bin/gosu /usr/local/bin/gosu
 RUN gosu --version && gosu nobody true
 
-COPY --from=builder /root/rpmbuild/RPMS/*/*.rpm /tmp/rpms/
+# Copy the view and the package store from the builder stage.
+#
+# /opt/spack               — unified bin/lib/include tree; used for env
+# /opt/spack.git/opt/spack — the Spack install tree; required because binaries
+#                            reference their install prefix at runtime (rpaths,
+#                            compiled-in default paths for logs, pid files, etc.)
+COPY --from=builder /opt/spack /opt/spack
+COPY --from=builder /opt/spack.git/opt/spack /opt/spack.git/opt/spack
 
-# Install Slurm RPMs
-RUN set -ex \
-    && dnf -y install /tmp/rpms/slurm-[0-9]*.rpm \
-       /tmp/rpms/slurm-perlapi-*.rpm \
-       /tmp/rpms/slurm-slurmctld-*.rpm \
-       /tmp/rpms/slurm-slurmd-*.rpm \
-       /tmp/rpms/slurm-slurmdbd-*.rpm \
-       /tmp/rpms/slurm-slurmrestd-*.rpm \
-       /tmp/rpms/slurm-contribs-*.rpm \
-    && rm -rf /tmp/rpms \
-    && dnf clean all
+# Set runtime environment so all view binaries and libraries are found
+ENV PATH=/opt/spack/bin:/opt/spack/sbin:${PATH}
+ENV LD_LIBRARY_PATH=/opt/spack/lib:/opt/spack/lib64
+ENV MANPATH=/opt/spack/share/man
 
 # Create users, generate munge key, and set up directories
 RUN set -x \
+    && groupadd -r --gid=989 munge \
+    && useradd -r -g munge --uid=989 \
+        --home-dir /run/munge \
+        --shell /sbin/nologin \
+        munge \
     && groupadd -r --gid=990 slurm \
     && useradd -r -g slurm --uid=990 slurm \
     && groupadd -r --gid=991 slurmrest \
     && useradd -r -g slurmrest --uid=991 slurmrest \
     && chmod 0755 /etc \
-    && /sbin/create-munge-key \
+    && /opt/spack/sbin/mungekey --create --verbose \
+    && find /opt -name munge.key -exec chown munge:munge {} \; \
     && mkdir -m 0755 -p \
+        /var/run/munge \
+        /var/lib/munge \
+        /var/log/munge \
         /var/run/slurm \
         /var/spool/slurm \
         /var/lib/slurm \
         /var/log/slurm \
         /etc/slurm \
+    && chown munge:munge \
+        /var/run/munge \
+        /var/lib/munge \
+        /var/log/munge \
     && chown slurm:slurm \
         /var/run/slurm \
         /var/spool/slurm \

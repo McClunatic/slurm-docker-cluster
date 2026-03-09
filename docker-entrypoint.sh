@@ -29,7 +29,7 @@ detect_replica_number() {
 }
 
 echo "---> Starting the MUNGE Authentication service (munged) ..."
-gosu munge /usr/sbin/munged
+gosu munge /opt/spack/sbin/munged
 
 if [ "$1" = "slurmdbd" ]
 then
@@ -56,7 +56,7 @@ then
     done
     echo "-- Database is now active ..."
 
-    exec gosu slurm /usr/sbin/slurmdbd -Dvvv
+    exec gosu slurm /opt/spack/sbin/slurmdbd -Dvvv
     # exec tail -f /dev/null
 fi
 
@@ -114,7 +114,7 @@ then
     fi
 
     echo "---> Starting the Slurm Controller Daemon (slurmctld) ..."
-    exec gosu slurm /usr/sbin/slurmctld -i -Dvvv
+    exec gosu slurm /opt/spack/sbin/slurmctld -i -Dvvv
 fi
 
 if [ "$1" = "slurmrestd" ]
@@ -137,7 +137,7 @@ then
 
     # Export the SLURM_JWT=daemon environment variable before starting the slurmrestd daemon
     # to activate AuthAltTypes=auth/jwt as the primary authentication mechanism
-    export SLURM_JWT=daemon; exec gosu slurmrest /usr/sbin/slurmrestd -vvv unix:/var/run/slurmrestd/slurmrestd.socket 0.0.0.0:6820
+    export SLURM_JWT=daemon; exec gosu slurmrest /opt/spack/sbin/slurmrestd -vvv unix:/var/run/slurmrestd/slurmrestd.socket 0.0.0.0:6820
 fi
 
 if [ "$1" = "slurmd-cpu" ]
@@ -163,7 +163,7 @@ then
 
     # -Z: dynamic node self-registration with slurmctld
     # Feature=cpu: tag for cpu partition NodeSet matching
-    exec /usr/sbin/slurmd -Z -Dvvv \
+    exec /opt/spack/sbin/slurmd -Z -Dvvv \
         --conf "Feature=cpu"
 fi
 
@@ -189,7 +189,7 @@ then
     echo "---> Starting slurmd in dynamic GPU registration mode (-Z)..."
 
     GPU_COUNT=$(ls /dev/nvidia[0-9] 2>/dev/null | wc -l)
-    exec /usr/sbin/slurmd -Z -Dvvv \
+    exec /opt/spack/sbin/slurmd -Z -Dvvv \
         --conf "Feature=gpu Gres=gpu:nvidia:${GPU_COUNT}"
 fi
 
