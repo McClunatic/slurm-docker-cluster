@@ -69,7 +69,46 @@ sacct                          # View accounting
 make run-examples
 ```
 
-## 📈 Scaling
+## � Multi-User Support
+
+Create additional Linux users in the Slurm containers for testing multi-user scenarios and job submission:
+
+```bash
+# Add users via .env file
+echo "USERS=alice bob carol" >> .env
+make up  # or 'make restart' if cluster is already running
+
+# Verify users exist with consistent UIDs across containers
+docker exec slurmctld id alice       # uid=1000(alice)
+docker exec slurmctld id bob         # uid=1001(bob)
+docker exec slurm-cpu-worker-1 id alice  # uid=1000(alice) - same UID!
+
+# Execute commands as specific users
+docker exec -u alice slurmctld whoami
+docker exec -u alice slurmctld bash
+
+# Submit jobs as different users
+docker exec -u alice slurmctld sbatch --wrap="hostname"
+docker exec -u bob slurmctld srun sleep 10
+docker exec -u carol slurmctld squeue
+
+# Check job accounting by user
+docker exec slurmctld sacct --format=User,JobID,JobName,State
+```
+
+**Features:**
+- Users are created at container startup (no rebuild required)
+- Consistent UIDs across all containers (users sorted alphabetically)
+- Home directories with standard shell configurations (.bashrc, etc.)
+- Supports comma or space-delimited usernames
+- Works with all services: slurmctld, slurmdbd, cpu-worker, gpu-worker
+
+**Testing:**
+```bash
+make test-users  # Run automated multi-user tests
+```
+
+## �📈 Scaling
 
 Compute nodes use Slurm's dynamic registration (`slurmd -Z`) and self-register
 with sequential hostnames (c1, c2, c3... for CPU; g1, g2... for GPU). Scale up
