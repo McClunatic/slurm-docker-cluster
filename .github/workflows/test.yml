@@ -37,9 +37,11 @@ jobs:
       fail-fast: false  # Allow all matrix jobs to complete independently
       matrix:
         # All versions on amd64, latest only on arm64
+        # Metrics support: Slurm 25.11.2+ only
         slurm_version: ['25.11.2', '25.05.6']
         runner: ['ubuntu-latest']
         monitoring: ['disabled', 'enabled']
+        metrics: ['disabled', 'enabled']
         include:
           - runner: ubuntu-latest
             arch: amd64
@@ -47,16 +49,18 @@ jobs:
             runner: ubuntu-24.04-arm
             arch: arm64
             monitoring: disabled
+            metrics: disabled
           - slurm_version: '25.11.2'
             runner: ubuntu-24.04-arm
             arch: arm64
             monitoring: enabled
+            metrics: enabled
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure cluster - Slurm ${{ matrix.slurm_version }} (${{ matrix.arch }}) - Monitoring ${{ matrix.monitoring }}
+      - name: Configure cluster - Slurm ${{ matrix.slurm_version }} (${{ matrix.arch }}) - Monitoring ${{ matrix.monitoring }} - Metrics ${{ matrix.metrics }}
         run: |
           echo "SLURM_VERSION=${{ matrix.slurm_version }}" > .env
           if [ "${{ matrix.monitoring }}" == "enabled" ]; then
@@ -64,6 +68,12 @@ jobs:
             echo "✓ Monitoring ENABLED"
           else
             echo "✓ Monitoring DISABLED"
+          fi
+          if [ "${{ matrix.metrics }}" == "enabled" ]; then
+            echo "ENABLE_PROMETHEUS=true" >> .env
+            echo "✓ Metrics ENABLED"
+          else
+            echo "✓ Metrics DISABLED"
           fi
           cat .env
 
@@ -136,6 +146,24 @@ jobs:
           done'
           echo "Kibana is healthy"
 
+      - name: Wait for Prometheus to be healthy
+        if: matrix.metrics == 'enabled'
+        run: |
+          timeout 90 bash -c 'until docker compose ps prometheus 2>/dev/null | grep -q "healthy"; do
+            echo "Waiting for Prometheus..."
+            sleep 2
+          done'
+          echo "Prometheus is healthy"
+
+      - name: Wait for Grafana to be healthy
+        if: matrix.metrics == 'enabled'
+        run: |
+          timeout 120 bash -c 'until docker compose ps grafana 2>/dev/null | grep -q "healthy"; do
+            echo "Waiting for Grafana..."
+            sleep 2
+          done'
+          echo "Grafana is healthy"
+
       - name: Show cluster status
         run: make status
 
@@ -154,6 +182,10 @@ jobs:
       - name: Run monitoring test suite
         if: matrix.monitoring == 'enabled'
         run: make test-monitoring
+
+      - name: Run metrics test suite
+        if: matrix.metrics == 'enabled'
+        run: make test-metrics
 
       - name: Show logs on failure
         if: failure()

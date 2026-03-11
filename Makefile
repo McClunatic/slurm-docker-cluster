@@ -1,4 +1,4 @@
-.PHONY: help build build-no-cache up start down clean logs test test-monitoring test-gpu status shell logs-slurmctld logs-slurmdbd update-slurm reload-slurm version set-version build-all test-all test-version rebuild jobs quick-test run-examples scale-cpu-workers scale-gpu-workers
+.PHONY: help build build-no-cache up start down clean logs test test-monitoring test-metrics test-gpu status shell logs-slurmctld logs-slurmdbd update-slurm reload-slurm version set-version build-all test-all test-version rebuild jobs quick-test run-examples scale-cpu-workers scale-gpu-workers
 
 # Default target
 .DEFAULT_GOAL := help
@@ -60,6 +60,7 @@ help:  ## Show this help message
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "test" "Run test suite"
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "test-users" "Run multi-user tests"
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "test-monitoring" "Run monitoring profile tests"
+	@printf "  ${CYAN}%-15s${RESET} %s\n" "test-metrics" "Run metrics profile tests"
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "test-gpu" "Run GPU profile tests"
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "quick-test" "Submit a quick test job"
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "run-examples" "Run example jobs"
@@ -112,6 +113,9 @@ test-users:  ## Run multi-user test suite
 
 test-monitoring:  ## Run monitoring profile test suite
 	./test_monitoring.sh
+
+test-metrics:  ## Run metrics profile test suite
+	./test_metrics.sh
 
 test-gpu:  ## Run GPU profile test suite
 	./test_gpu.sh

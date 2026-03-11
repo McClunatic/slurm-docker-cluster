@@ -749,6 +749,14 @@ main() {
     test_get_jwt_token || true
     test_validate_jwt_authentication || true
 
+    # Run metrics profile tests if enabled
+    if grep -q "^ENABLE_PROMETHEUS=true" .env 2>/dev/null; then
+        print_info "Metrics profile enabled, running metrics tests..."
+        echo ""
+        ./test_metrics.sh || print_fail "Metrics profile tests failed"
+        echo ""
+    fi
+
     # Print summary
     echo ""
     print_header "Test Summary"
