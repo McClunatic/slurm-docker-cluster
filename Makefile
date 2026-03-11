@@ -1,4 +1,4 @@
-.PHONY: help build build-no-cache up start down clean logs test test-monitoring test-gpu test-ondemand status shell logs-slurmctld logs-slurmdbd update-slurm reload-slurm version set-version build-all test-all test-version rebuild jobs quick-test run-examples scale-cpu-workers scale-gpu-workers
+.PHONY: help build build-no-cache up start down clean logs test test-monitoring test-prometheus test-gpu test-ondemand status shell logs-slurmctld logs-slurmdbd update-slurm reload-slurm version set-version build-all test-all test-version rebuild jobs quick-test run-examples scale-cpu-workers scale-gpu-workers
 
 # Default target
 .DEFAULT_GOAL := help
@@ -12,6 +12,7 @@ DEFAULT_VERSION := $(shell grep '^SLURM_VERSION=' .env.example | cut -d= -f2)
 ELASTICSEARCH_HOST := $(shell grep -E '^ELASTICSEARCH_HOST=' .env 2>/dev/null | cut -d= -f2)
 GPU_ENABLE := $(shell grep -E '^GPU_ENABLE=' .env 2>/dev/null | cut -d= -f2)
 OOD_ENABLE := $(shell grep -E '^OOD_ENABLE=' .env 2>/dev/null | cut -d= -f2)
+PROMETHEUS_ENABLE := $(shell grep -E '^PROMETHEUS_ENABLE=' .env 2>/dev/null | cut -d= -f2)
 
 # Build profile flags
 PROFILES :=
@@ -23,6 +24,9 @@ ifeq ($(GPU_ENABLE),true)
 endif
 ifeq ($(OOD_ENABLE),true)
     PROFILES += --profile ondemand
+endif
+ifeq ($(PROMETHEUS_ENABLE),true)
+    PROFILES += --profile prometheus
 endif
 PROFILE_FLAG := $(PROFILES)
 
@@ -59,6 +63,7 @@ help:  ## Show this help message
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "shell" "Open shell in slurmctld"
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "test" "Run test suite"
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "test-monitoring" "Run monitoring profile tests"
+	@printf "  ${CYAN}%-15s${RESET} %s\n" "test-prometheus" "Run prometheus profile tests"
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "test-gpu" "Run GPU profile tests"
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "test-ondemand" "Run Open OnDemand profile tests"
 	@printf "  ${CYAN}%-15s${RESET} %s\n" "quick-test" "Submit a quick test job"
@@ -81,6 +86,11 @@ help:  ## Show this help message
 	@echo "Monitoring:"
 	@echo "  Enable:  Set ELASTICSEARCH_HOST=http://elasticsearch:9200 in .env"
 	@echo "  Disable: Comment out or remove ELASTICSEARCH_HOST from .env"
+	@echo ""
+	@echo "Prometheus Metrics:"
+	@echo "  Enable:  Set PROMETHEUS_ENABLE=true in .env"
+	@echo "  Disable: Comment out or remove PROMETHEUS_ENABLE from .env"
+	@echo "  Access:  Prometheus: http://localhost:9090, Grafana: http://localhost:3000 (admin/admin)"
 	@echo ""
 	@echo "GPU Support (NVIDIA):"
 	@echo "  Enable:  Set GPU_ENABLE=true in .env (requires nvidia-container-toolkit on host)"
@@ -115,6 +125,9 @@ test:  ## Run test suite
 test-monitoring:  ## Run monitoring profile test suite
 	./test_monitoring.sh
 
+test-prometheus:  ## Run prometheus profile test suite
+	./test_prometheus.sh
+
 test-gpu:  ## Run GPU profile test suite
 	./test_gpu.sh
 
@@ -136,6 +149,15 @@ logs-slurmctld:  ## Show slurmctld logs
 
 logs-slurmdbd:  ## Show slurmdbd logs
 	docker compose logs -f slurmdbd
+
+logs-prometheus:  ## Show prometheus logs
+	docker compose --profile prometheus logs -f prometheus
+
+logs-pushgateway:  ## Show pushgateway logs
+	docker compose --profile prometheus logs -f pushgateway
+
+logs-grafana:  ## Show grafana logs
+	docker compose --profile prometheus logs -f grafana
 
 quick-test:  ## Submit a quick test job
 	docker exec slurmctld bash -c "cd /data && sbatch --wrap='hostname' && sleep 3 && squeue && cat slurm-*.out 2>/dev/null | tail -5"

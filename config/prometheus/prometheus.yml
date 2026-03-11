@@ -1,0 +1,46 @@
+# Prometheus configuration for Slurm Docker Cluster
+# Scrapes metrics from Slurm PrometheusExporter and Pushgateway
+
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+  scrape_timeout: 10s
+
+# Alertmanager configuration (optional - not configured in this demo)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: []
+
+# Load rules once and periodically evaluate them
+# rule_files:
+#   - "alerts.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Scrape Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # Scrape Slurm metrics from PrometheusExporter
+  - job_name: 'slurm'
+    static_configs:
+      - targets: ['slurmctld:8081']
+        labels:
+          cluster: 'linux'
+          service: 'slurm'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Scrape application metrics from Pushgateway
+  - job_name: 'pushgateway'
+    honor_labels: true
+    static_configs:
+      - targets: ['pushgateway:9091']
+        labels:
+          service: 'pushgateway'
+    metrics_path: '/metrics'
+    scrape_interval: 15s

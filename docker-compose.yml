@@ -72,6 +72,7 @@ services:
       - ${SSH_AUTHORIZED_KEYS:-/dev/null}:/tmp/authorized_keys_host:ro,z
     ports:
       - "${SSH_PORT:-3022}:22"
+      - "8081:8081"  # Prometheus metrics endpoint
     expose:
       - "6817"
     depends_on:
@@ -258,6 +259,87 @@ services:
       retries: 5
       start_period: 60s
 
+  # Prometheus for metrics collection and querying
+  # Start with: docker compose --profile prometheus up -d
+  #   or with: make up-with-prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    profiles: ["prometheus"]
+    container_name: prometheus
+    hostname: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    volumes:
+      - ./config/prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    expose:
+      - "9090"
+    networks:
+      - slurm-network
+    depends_on:
+      slurmctld:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Pushgateway for application metrics
+  pushgateway:
+    image: prom/pushgateway:latest
+    profiles: ["prometheus"]
+    container_name: pushgateway
+    hostname: pushgateway
+    ports:
+      - "9091:9091"
+    expose:
+      - "9091"
+    networks:
+      - slurm-network
+    healthcheck:
+      test: ["CMD", "wget", "--tries=1", "--spider", "http://localhost:9091/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Grafana for metrics visualization
+  grafana:
+    image: grafana/grafana:latest
+    profiles: ["prometheus"]
+    container_name: grafana
+    hostname: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    expose:
+      - "3000"
+    networks:
+      - slurm-network
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
 volumes:
   etc_munge:
   etc_slurm:
@@ -266,6 +348,8 @@ volumes:
   var_log_slurm:
   home_ood:
   elasticsearch_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   slurm-network:
