@@ -176,6 +176,76 @@ make test-monitoring
 
 **Indexed data:** Job ID, user, partition, state, times, nodes, exit code
 
+### Prometheus & Grafana (Optional)
+
+Enable real-time cluster metrics visualization with Prometheus time-series database and Grafana dashboards:
+
+```bash
+# 1. Enable Prometheus in .env
+ENABLE_PROMETHEUS=true
+
+# 2. Start cluster (metrics profile auto-enabled)
+make up
+
+# 3. Access Grafana at http://localhost:3000 (admin/admin)
+# - Pre-configured Prometheus datasource
+# - Example dashboard with 6 panels showing cluster metrics
+# - Prometheus UI at http://localhost:9090
+# - Pushgateway at http://localhost:9091 (for batch job custom metrics)
+
+# 4. Submit a job that collects and pushes custom metrics
+docker exec -it slurmctld python3 examples/submit_job_with_metrics.py
+
+# 5. In Grafana, explore the metrics:
+# - Jobs: slurm_jobs, slurm_jobs_running, slurm_jobs_pending
+# - Nodes: slurm_nodes, slurm_nodes_idle, slurm_nodes_alloc
+# - Resources: slurm_jobs_cpus_alloc, slurm_jobs_memory_alloc
+# - Scheduler: slurm_sched_cycle_cnt, slurm_bf_cycle_cnt
+# - Custom: custom_job_* (from pushgateway)
+
+# Test metrics functionality
+make test-monitoring  # includes basic metrics check
+```
+
+**What's monitored:**
+- **Job metrics:** Total jobs, running, pending, CPU/memory allocation
+- **Node metrics:** Total, idle, allocated, down nodes
+- **Partition metrics:** Jobs per partition, resource distribution
+- **Scheduler metrics:** Scheduling cycles, backfill performance
+- **Custom metrics:** From batch jobs via Pushgateway (Python example provided)
+
+**Accessing raw metrics:**
+
+```bash
+# Query Slurm metrics directly
+curl http://localhost:9090/metrics/jobs
+curl http://localhost:9090/metrics/nodes
+curl http://localhost:9090/metrics/scheduler
+
+# Query Prometheus
+curl 'http://localhost:9090/api/v1/query?query=slurm_jobs'
+```
+
+**Creating custom metrics from batch jobs:**
+
+The example script `examples/submit_job_with_metrics.py` demonstrates:
+1. Setting up Python virtual environment in job
+2. Installing `prometheus-client` library
+3. Collecting job metrics (execution time, memory, CPU)
+4. Pushing metrics to Pushgateway
+
+Use as a template for your own metric collection:
+
+```python
+from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
+
+registry = CollectorRegistry()
+custom_metric = Gauge('my_metric', 'Description', registry=registry)
+custom_metric.set(42)
+
+push_to_gateway('pushgateway:9091', job='myjob', registry=registry)
+```
+
 ## 🎮 GPU Support (NVIDIA)
 
 Enable optional NVIDIA GPU support using [NVIDIA's official CUDA base images](https://hub.docker.com/r/nvidia/cuda/tags):

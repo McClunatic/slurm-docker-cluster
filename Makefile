@@ -11,6 +11,7 @@ DEFAULT_VERSION := $(shell grep '^SLURM_VERSION=' .env.example | cut -d= -f2)
 # Auto-detect profiles based on .env configuration
 ELASTICSEARCH_HOST := $(shell grep -E '^ELASTICSEARCH_HOST=' .env 2>/dev/null | cut -d= -f2)
 GPU_ENABLE := $(shell grep -E '^GPU_ENABLE=' .env 2>/dev/null | cut -d= -f2)
+ENABLE_PROMETHEUS := $(shell grep -E '^ENABLE_PROMETHEUS=' .env 2>/dev/null | cut -d= -f2)
 
 # Build profile flags
 PROFILES :=
@@ -19,6 +20,9 @@ ifdef ELASTICSEARCH_HOST
 endif
 ifeq ($(GPU_ENABLE),true)
     PROFILES += --profile gpu
+endif
+ifeq ($(ENABLE_PROMETHEUS),true)
+    PROFILES += --profile metrics
 endif
 PROFILE_FLAG := $(PROFILES)
 
@@ -75,8 +79,8 @@ help:  ## Show this help message
 	@echo "  make test-version VER=25.05.6"
 	@echo ""
 	@echo "Monitoring:"
-	@echo "  Enable:  Set ELASTICSEARCH_HOST=http://elasticsearch:9200 in .env"
-	@echo "  Disable: Comment out or remove ELASTICSEARCH_HOST from .env"
+	@echo "  Elasticsearch: Set ELASTICSEARCH_HOST=http://elasticsearch:9200 in .env"
+	@echo "  Prometheus:    Set ENABLE_PROMETHEUS=true in .env"
 	@echo ""
 	@echo "GPU Support (NVIDIA):"
 	@echo "  Enable:  Set GPU_ENABLE=true in .env (requires nvidia-container-toolkit on host)"

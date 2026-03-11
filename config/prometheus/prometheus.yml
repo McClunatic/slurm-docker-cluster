@@ -1,0 +1,60 @@
+# Prometheus configuration for Slurm 25.11+ metrics monitoring
+# This configuration scrapes metrics from the Slurm controller's HTTP endpoints
+
+global:
+  scrape_interval: 60s          # Default scrape interval for all jobs
+  evaluation_interval: 60s      # How often to evaluate rules
+  external_labels:
+    cluster: 'slurm-docker'    # Add cluster label to all metrics
+
+# Scrape configurations for different Slurm metric endpoints
+scrape_configs:
+  # Job-related metrics: job counts by state, resource allocation, etc.
+  - job_name: 'slurm_jobs'
+    static_configs:
+      - targets: ['slurmctld:6817']
+    metrics_path: '/metrics/jobs'
+    scrape_interval: 60s
+    scrape_timeout: 10s
+
+  # Node-related metrics: node states, resource counts, capacity
+  - job_name: 'slurm_nodes'
+    static_configs:
+      - targets: ['slurmctld:6817']
+    metrics_path: '/metrics/nodes'
+    scrape_interval: 60s
+    scrape_timeout: 10s
+
+  # Partition metrics: job distribution, node allocation across partitions
+  - job_name: 'slurm_partitions'
+    static_configs:
+      - targets: ['slurmctld:6817']
+    metrics_path: '/metrics/partitions'
+    scrape_interval: 60s
+    scrape_timeout: 10s
+
+  # Scheduler performance: cycle times, backfill statistics
+  - job_name: 'slurm_scheduler'
+    static_configs:
+      - targets: ['slurmctld:6817']
+    metrics_path: '/metrics/scheduler'
+    scrape_interval: 60s
+    scrape_timeout: 10s
+
+  # Pushgateway: custom metrics pushed by batch jobs
+  # This scrapes aggregated metrics from the pushgateway
+  - job_name: 'pushgateway'
+    static_configs:
+      - targets: ['pushgateway:9091']
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+# User and account metrics (optional - uncomment if needed)
+# WARNING: These metrics can cause high cardinality issues in Prometheus
+# because each unique user/account creates a new time series
+#   - job_name: 'slurm_useracct'
+#     static_configs:
+#       - targets: ['slurmctld:6817']
+#     metrics_path: '/metrics/jobs-users-accts'
+#     scrape_interval: 300s  # Only scrape every 5 minutes to reduce cardinality
+#     scrape_timeout: 15s
