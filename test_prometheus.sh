@@ -129,38 +129,36 @@ test_grafana_healthy() {
     fi
 }
 
-# Test 7: Check Slurm PrometheusExporter configuration
+# Test 7: Check Slurm metrics configuration
 test_slurm_prometheus_config() {
-    print_test "Checking Slurm PrometheusExporter configuration..."
+    print_test "Checking Slurm metrics configuration..."
 
-    PROM_EXPORTER=$(docker exec slurmctld grep "^PrometheusExporter" /etc/slurm/slurm.conf | cut -d= -f2 || echo "No")
-    PROM_PORT=$(docker exec slurmctld grep "^PrometheusPort" /etc/slurm/slurm.conf | cut -d= -f2 || echo "")
+    METRICS_TYPE=$(docker exec slurmctld grep "^MetricsType" /etc/slurm/slurm.conf | cut -d= -f2 || echo "None")
 
-    if [ "$PROM_EXPORTER" = "Yes" ]; then
-        print_info "  PrometheusExporter=$PROM_EXPORTER"
-        print_info "  PrometheusPort=$PROM_PORT"
-        print_pass "Slurm configured for PrometheusExporter"
+    if [ "$METRICS_TYPE" = "metrics/openmetrics" ]; then
+        print_info "  MetricsType=$METRICS_TYPE"
+        print_pass "Slurm configured for OpenMetrics export"
     else
-        print_fail "Slurm not configured for PrometheusExporter (PrometheusExporter=$PROM_EXPORTER)"
+        print_fail "Slurm not configured for OpenMetrics (MetricsType=$METRICS_TYPE)"
         return 1
     fi
 }
 
-# Test 8: Check PrometheusExporter endpoint accessibility
+# Test 8: Check metrics endpoint accessibility
 test_prometheus_exporter_endpoint() {
-    print_test "Checking PrometheusExporter endpoint..."
+    print_test "Checking metrics endpoint..."
 
     # Wait a moment for slurmctld to fully start
     sleep 2
 
-    # Try to access metrics endpoint
-    METRICS=$(docker exec slurmctld curl -s http://localhost:8081/metrics 2>/dev/null | head -5)
+    # Try to access metrics endpoint (jobs endpoint as a test)
+    METRICS=$(docker exec slurmctld curl -s http://localhost:6817/metrics/jobs 2>/dev/null | head -5)
 
     if echo "$METRICS" | grep -q "slurm_"; then
         print_info "  Sample metrics: $(echo "$METRICS" | grep "^slurm_" | head -1)"
-        print_pass "PrometheusExporter endpoint is accessible"
+        print_pass "Metrics endpoint is accessible"
     else
-        print_fail "PrometheusExporter endpoint is not accessible or not returning metrics"
+        print_fail "Metrics endpoint is not accessible or not returning metrics"
         print_info "  Response: $METRICS"
         return 1
     fi
@@ -286,7 +284,7 @@ main() {
     echo "  - Prometheus (metrics storage & querying)"
     echo "  - Pushgateway (application metrics)"
     echo "  - Grafana (visualization)"
-    echo "  - Slurm PrometheusExporter"
+    echo "  - Slurm OpenMetrics"
     echo ""
 
     # Run all tests
