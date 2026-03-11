@@ -18,7 +18,7 @@ This guide provides comprehensive documentation for using Prometheus, Pushgatewa
 
 The Prometheus monitoring stack provides:
 
-1. **Slurm Cluster Metrics** - Exposed by Slurm's built-in PrometheusExporter plugin
+1. **Slurm Cluster Metrics** - Exposed by Slurm's built-in OpenMetrics support
 2. **Application Metrics** - Custom metrics pushed by user applications via Pushgateway
 3. **Visualization** - Pre-configured Grafana dashboards for monitoring and analysis
 
@@ -38,7 +38,8 @@ The Prometheus monitoring stack provides:
 │   Slurm Cluster │
 │   (slurmctld)   │──┐
 │                 │  │ Exposes metrics
-│ PrometheusExporter│  │ on port 8081
+│ MetricsType=    │  │ on port 6817
+│ openmetrics     │  │ /metrics/* endpoints
 └─────────────────┘  │
                      │
 ┌─────────────────┐  │    ┌─────────────────┐
@@ -129,19 +130,24 @@ sbatch examples/jobs/prometheus_demo.sh
 
 ## Components
 
-### Slurm PrometheusExporter
+### Slurm OpenMetrics
 
-Slurm 25.11+ includes a built-in PrometheusExporter plugin that exposes cluster metrics in OpenMetrics/Prometheus format.
+Slurm 25.11+ includes built-in OpenMetrics support that exposes cluster metrics in Prometheus-compatible format.
 
 **Configuration** (in `slurm.conf`):
 ```
-PrometheusExporter=Yes
-PrometheusHost=0.0.0.0
-PrometheusPort=8081
-PrometheusInterval=30
+MetricsType=metrics/openmetrics
 ```
 
-**Endpoint**: http://slurmctld:8081/metrics
+**Endpoints** (served on slurmctld port 6817):
+- `GET /metrics` - List available metric endpoints
+- `GET /metrics/jobs` - Job-related metrics
+- `GET /metrics/jobs-users-accts` - User and account job metrics
+- `GET /metrics/nodes` - Node-related metrics
+- `GET /metrics/partitions` - Partition-related metrics
+- `GET /metrics/scheduler` - Scheduler performance metrics
+
+**Documentation**: https://slurm.schedmd.com/metrics.html
 
 ### Prometheus
 
@@ -150,7 +156,11 @@ Time-series database that scrapes and stores metrics.
 **Configuration**: `config/prometheus/prometheus.yml`
 
 **Scrape Targets**:
-- `slurm` job: slurmctld:8081 (Slurm metrics)
+- `slurm_jobs` job: slurmctld:6817/metrics/jobs
+- `slurm_nodes` job: slurmctld:6817/metrics/nodes
+- `slurm_partitions` job: slurmctld:6817/metrics/partitions
+- `slurm_scheduler` job: slurmctld:6817/metrics/scheduler
+- `slurm_jobs_users_accts` job: slurmctld:6817/metrics/jobs-users-accts
 - `pushgateway` job: pushgateway:9091 (application metrics)
 
 **Retention**: Default 15 days (configurable)
@@ -182,7 +192,7 @@ Visualization and dashboarding platform.
 
 ### Slurm Cluster Metrics
 
-Exposed by PrometheusExporter (prefix: `slurm_*`):
+Exposed by Slurm OpenMetrics (prefix: `slurm_*`):
 
 #### Node Metrics
 - `slurm_node_info` - Node information (hostname, state, partition)
@@ -450,16 +460,16 @@ Export dashboard JSON:
 
 ### Prometheus Not Scraping Slurm Metrics
 
-**Check PrometheusExporter**:
+**Check OpenMetrics configuration**:
 ```bash
 # Verify config
-docker exec slurmctld grep Prometheus /etc/slurm/slurm.conf
+docker exec slurmctld grep MetricsType /etc/slurm/slurm.conf
 
 # Test endpoint directly
-docker exec slurmctld curl http://localhost:8081/metrics
+docker exec slurmctld curl http://localhost:6817/metrics/jobs
 
 # Check for slurm_ metrics
-docker exec slurmctld curl -s http://localhost:8081/metrics | grep "^slurm_"
+docker exec slurmctld curl -s http://localhost:6817/metrics/jobs | grep "^slurm_"
 ```
 
 **Check Prometheus targets**:
@@ -468,9 +478,9 @@ docker exec slurmctld curl -s http://localhost:8081/metrics | grep "^slurm_"
 - Check error messages if DOWN
 
 **Common issues**:
-- PrometheusExporter not enabled in slurm.conf
-- Port 8081 not exposed in docker-compose.yml
+- MetricsType not set to metrics/openmetrics in slurm.conf
 - slurmctld not restarted after config change
+- Firewall or network issues
 
 **Fix**:
 ```bash
@@ -481,7 +491,7 @@ docker compose restart slurmctld
 sleep 10
 
 # Verify endpoint
-curl http://localhost:8081/metrics
+curl http://localhost:6817/metrics/jobs
 ```
 
 ### Application Metrics Not Appearing
@@ -617,7 +627,7 @@ make test
 - [Prometheus Documentation](https://prometheus.io/docs/)
 - [PromQL Basics](https://prometheus.io/docs/prometheus/latest/querying/basics/)
 - [Grafana Documentation](https://grafana.com/docs/)
-- [Slurm PrometheusExporter](https://slurm.schedmd.com/prometheus.html)
+- [Slurm OpenMetrics](https://slurm.schedmd.com/metrics.html)
 - [prometheus_client Python](https://github.com/prometheus/client_python)
 
 ### Query Recipes

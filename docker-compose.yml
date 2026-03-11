@@ -72,7 +72,6 @@ services:
       - ${SSH_AUTHORIZED_KEYS:-/dev/null}:/tmp/authorized_keys_host:ro,z
     ports:
       - "${SSH_PORT:-3022}:22"
-      - "8081:8081"  # Prometheus metrics endpoint
     expose:
       - "6817"
     depends_on:

@@ -25,14 +25,47 @@ scrape_configs:
         labels:
           service: 'prometheus'
 
-  # Scrape Slurm metrics from PrometheusExporter
-  - job_name: 'slurm'
+  # Scrape Slurm metrics from slurmctld MetricsType=metrics/openmetrics
+  # Documentation: https://slurm.schedmd.com/metrics.html
+  
+  - job_name: 'slurm_jobs'
     static_configs:
-      - targets: ['slurmctld:8081']
+      - targets: ['slurmctld:6817']
         labels:
           cluster: 'linux'
-          service: 'slurm'
-    metrics_path: '/metrics'
+    metrics_path: '/metrics/jobs'
+    scrape_interval: 30s
+
+  - job_name: 'slurm_nodes'
+    static_configs:
+      - targets: ['slurmctld:6817']
+        labels:
+          cluster: 'linux'
+    metrics_path: '/metrics/nodes'
+    scrape_interval: 30s
+
+  - job_name: 'slurm_partitions'
+    static_configs:
+      - targets: ['slurmctld:6817']
+        labels:
+          cluster: 'linux'
+    metrics_path: '/metrics/partitions'
+    scrape_interval: 30s
+
+  - job_name: 'slurm_scheduler'
+    static_configs:
+      - targets: ['slurmctld:6817']
+        labels:
+          cluster: 'linux'
+    metrics_path: '/metrics/scheduler'
+    scrape_interval: 30s
+
+  - job_name: 'slurm_jobs_users_accts'
+    static_configs:
+      - targets: ['slurmctld:6817']
+        labels:
+          cluster: 'linux'
+    metrics_path: '/metrics/jobs-users-accts'
     scrape_interval: 30s
 
   # Scrape application metrics from Pushgateway
