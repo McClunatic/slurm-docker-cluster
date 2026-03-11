@@ -137,6 +137,42 @@ make test-monitoring
 
 **Indexed data:** Job ID, user, partition, state, times, nodes, exit code
 
+### Prometheus Metrics (Optional)
+
+Enable cluster and application metrics monitoring with Prometheus, Pushgateway, and Grafana:
+
+```bash
+# 1. Setting PROMETHEUS_ENABLE in .env enables the prometheus profile
+PROMETHEUS_ENABLE=true
+
+# 2. Start cluster (prometheus profile auto-enabled)
+make up
+
+# 3. Access web interfaces
+#    Prometheus: http://localhost:9090
+#    Pushgateway: http://localhost:9091
+#    Grafana: http://localhost:3000 (admin/admin)
+
+# 4. Submit demo jobs to generate application metrics
+docker exec -it slurmctld bash
+sbatch /data/examples/jobs/prometheus_demo.sh
+
+# 5. Query metrics using provided scripts
+./examples/prometheus/query_slurm_metrics.sh
+./examples/prometheus/query_app_metrics.sh
+
+# Test prometheus stack
+make test-prometheus
+```
+
+**Features:**
+- Real-time cluster metrics (nodes, jobs, CPU, memory)
+- Application usage tracking with custom metrics
+- Pre-configured Grafana dashboards
+- PromQL query examples
+
+**Documentation:** See [README_PROMETHEUS.md](README_PROMETHEUS.md) for detailed guide
+
 ## 🎮 GPU Support (NVIDIA)
 
 Enable optional NVIDIA GPU support using [NVIDIA's official CUDA base images](https://hub.docker.com/r/nvidia/cuda/tags):
