@@ -65,12 +65,16 @@ RUN git clone --depth=2 --branch "${SPACK_TAG}" \
     https://github.com/spack/spack.git /opt/spack.git
 
 RUN . /opt/spack.git/share/spack/setup-env.sh && \
+    spack repo update -t v2026.03.0 builtin && \
     spack env create slurm && \
     spack env activate slurm && \
     spack add flux-sched && \
+    spack add flux-core@0.80.0 && \
+    spack add flux-python@0.80.0 && \
+    spack add py-parsl@2026.02.16 && \
+    spack add py-jsonschema && \
+    spack add python +freethreading && \
     spack add munge localstatedir=/var && \
-    spack add python && \
-    spack add py-pip && \
     spack add slurm@$(echo ${SLURM_VERSION} | tr . -) +cgroup +mariadb +pmix +restd sysconfdir=/etc/slurm && \
     sed -i /view/d /opt/spack.git/var/spack/environments/slurm/spack.yaml && \
     spack config add "view:default:root:/opt/spack" && \
@@ -88,13 +92,6 @@ RUN --mount=type=cache,target=/mirror \
     spack install --fail-fast && \
     spack buildcache push mirror && \
     spack gc -y
-
-# Install Python packages into the Spack-managed Python inside the view
-RUN . /opt/spack.git/share/spack/setup-env.sh && \
-    spack env activate slurm && \
-    pip install \
-    flux-python==$(spack find --format "{version}" flux-core) \
-    'parsl[visualization,monitoring,flux]'
 
 # ============================================================================
 # Stage 3: Runtime image
